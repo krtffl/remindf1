@@ -13,3 +13,6 @@ Cargo.lock
 # Added by cargo
 
 /target
+config.json
+recipients.json
+schedule-*.json

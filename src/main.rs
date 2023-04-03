@@ -1,120 +1,71 @@
-use regex::Regex;
+use chrono::Datelike;
+use commands::recipients::read_emails_from_file;
+use commands::recipients::save_recipients;
+use config::ConfigCmd;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use serde_json::Value;
+use std::collections::HashMap;
+use std::fs;
 use std::fs::File;
+use std::io::Read;
+use std::io::{self, Write};
 use std::io::{BufRead, BufReader};
+use std::path::PathBuf;
 use structopt::StructOpt;
 
-#[derive(StructOpt, Debug)]
-struct Cli {
-    #[structopt(short = "f", long = "file", parse(from_os_str))]
-    file: Option<std::path::PathBuf>,
-    #[structopt(short = "e", long = "email")]
-    emails: Vec<String>,
-}
+mod commands;
+mod config;
+mod models;
+mod utils;
 
-fn main() {
+use commands::config::display_config;
+use commands::config::prompt_and_save_config;
+use commands::recipients::display_recipients;
+use config::Cli;
+use models::api::SeasonByYearResponse;
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Cli::from_args();
 
-    let recipients = if let Some(file_path) = args.file {
-        read_emails_from_file(file_path)
-    } else if !args.emails.is_empty() {
-        let valid_emails: Vec<String> = args
-            .emails
-            .into_iter()
-            .filter(|email| is_valid_email(email))
-            .collect();
-        if !valid_emails.is_empty() {
-            Ok(valid_emails)
-        } else {
-            Err("error: no valid email addresses provided.".into())
-        }
-    } else {
-        Err("error: provide a list of emails or a file ".into())
-    };
-
-    match recipients {
-        Ok(recipients) => {
-            println!("{:?}", recipients)
-        }
-        Err(error_msg) => {
-            eprintln!("{}", error_msg);
-        }
-    }
-}
-
-fn is_valid_email(email: &str) -> bool {
-    let email_regex = Regex::new(r"(?x)^[\w-]+(\.[\w-]+)*@([\w-]+\.)+[a-zA-Z]{2,7}$").unwrap();
-    email_regex.is_match(email)
-}
-
-fn read_emails_from_file(file_path: std::path::PathBuf) -> Result<Vec<String>, String> {
-    let extension = file_path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .unwrap_or("");
-
-    match extension {
-        "csv" => read_emails_from_csv(file_path),
-        "txt" => read_emails_from_txt(file_path),
-        "json" => read_emails_from_json(file_path),
-        _ => Err("unsupported file type. please provide a .csv, .txt, or .json file.".into()),
-    }
-}
-
-fn read_emails_from_csv(file_path: std::path::PathBuf) -> Result<Vec<String>, String> {
-    let file = File::open(file_path).map_err(|e| format!("error opening file: {}", e))?;
-    let reader = BufReader::new(file);
-    let mut emails = vec![];
-
-    for line in reader.lines() {
-        let line = line.map_err(|e| format!("error reading line: {}", e))?;
-        if !line.is_empty() && is_valid_email(&line) {
-            emails.push(line);
-        }
-    }
-
-    Ok(emails)
-}
-
-fn read_emails_from_txt(file_path: std::path::PathBuf) -> Result<Vec<String>, String> {
-    let file = File::open(file_path).map_err(|e| format!("error opening file: {}", e))?;
-    let reader = BufReader::new(file);
-    let mut emails = vec![];
-
-    for line in reader.lines() {
-        let line = line.map_err(|e| format!("error reading line: {}", e))?;
-        if !line.is_empty() && is_valid_email(&line) {
-            emails.push(line);
-        }
-    }
-
-    Ok(emails)
-}
-
-fn read_emails_from_json(file_path: std::path::PathBuf) -> Result<Vec<String>, String> {
-    use serde_json::Value;
-    use std::io::Read;
-
-    let mut file = File::open(file_path).unwrap();
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)
-        .map_err(|e| format!("error reading file: {}", e))?;
-
-    let data: Value =
-        serde_json::from_str(&contents).map_err(|e| format!("error parsing json: {}", e))?;
-
-    let emails: Vec<String> = data
-        .as_array()
-        .ok_or("error: json file should contain an array of strings.")?
-        .iter()
-        .filter_map(|v| {
-            let email = v.as_str().unwrap();
-            if !email.is_empty() && is_valid_email(email) {
-                Some(email.to_string())
-            } else {
-                None
+    match args {
+        Cli::Config(cmd) => match (cmd.set, cmd.display) {
+            (true, _) => {
+                if let Err(e) = prompt_and_save_config() {
+                    eprintln!("error saving config: {}", e);
+                }
             }
-        })
-        .collect();
+            (_, true) => {
+                if let Err(e) = display_config() {
+                    eprintln!("error displaying config: {}", e);
+                }
+            }
+            _ => {
+                eprintln!("provide either --set or --display flag");
+            }
+        },
+        Cli::Recipients(cmd) => match (cmd.display, cmd.file.as_ref(), cmd.add) {
+            (true, None, None) => {
+                if let Err(e) = display_recipients() {
+                    eprintln!("{}", e);
+                }
+            }
+            (false, Some(file), None) => {
+                if let Err(e) = read_emails_from_file(PathBuf::from(file)).and_then(save_recipients)
+                {
+                    eprintln!("{}", e);
+                }
+            }
 
-    Ok(emails)
+            (false, None, Some(recipients)) => {
+                if let Err(e) = save_recipients(recipients) {
+                    eprintln!("{}", e);
+                }
+            }
+            _ => {
+                eprintln!("provide -d, -f or -a flags")
+            }
+        },
+    }
+
+    Ok(())
 }
