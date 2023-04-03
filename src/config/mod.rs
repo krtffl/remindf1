@@ -23,6 +23,8 @@ pub enum Cli {
     Config(ConfigCmd),
     #[structopt(name = "recipients", about = "manage reminder recipients")]
     Recipients(RecipientsCmd),
+    #[structopt(name = "schedule", about = "update and print schedule informaton")]
+    Schedule(ScheduleCmd),
 }
 
 #[derive(StructOpt, Debug)]
@@ -53,4 +55,16 @@ pub struct RecipientsCmd {
         help = "display current remindf1 config"
     )]
     pub display: bool,
+}
+
+#[derive(StructOpt, Debug)]
+pub struct ScheduleCmd {
+    #[structopt(short = "n", long = "next", help = "show next race information")]
+    pub next: bool,
+    #[structopt(
+        short = "u",
+        long = "update",
+        help = "manually check for schedule updates"
+    )]
+    pub update: bool,
 }

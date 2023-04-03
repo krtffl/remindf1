@@ -46,3 +46,16 @@ pub struct SessionSchedule {
     pub date: String,
     pub time: Option<String>,
 }
+#[derive(Serialize, Deserialize, Debug)]
+
+pub struct Schedule {
+    pub races: Vec<RaceSchedule>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RaceSchedule {
+    pub race: SessionSchedule,
+    pub circuitName: String,
+    pub raceName: String,
+    pub round: String,
+}

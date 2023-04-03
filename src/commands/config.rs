@@ -1,11 +1,10 @@
-use crate::config::{Config, CONFIG_FILE_PATH};
-
+use serde_json;
+use std::fs;
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::Path;
 
-use serde_json;
-use std::fs;
+use crate::config::{Config, CONFIG_FILE_PATH};
 
 pub fn display_config() -> Result<(), Box<dyn std::error::Error>> {
     if !Path::new(CONFIG_FILE_PATH).exists() {

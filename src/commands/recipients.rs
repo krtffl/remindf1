@@ -1,11 +1,12 @@
-use crate::config::RECIPIENTS_FILE_PATH;
-use crate::utils::validation::is_valid_email;
 use serde_json::Value;
 use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
+
+use crate::config::RECIPIENTS_FILE_PATH;
+use crate::utils::is_valid_email;
 
 pub fn read_emails_from_file(file_path: std::path::PathBuf) -> Result<Vec<String>, String> {
     let extension = file_path

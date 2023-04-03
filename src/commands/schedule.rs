@@ -1,14 +1,16 @@
-use serde_json::json;
-use serde_json::Value;
+use chrono::{Datelike, NaiveDate, Utc};
+use serde_json::{from_str, json, Value};
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
-use std::io::{self, Write};
+use std::io::Write;
+use std::path::Path;
 
-use crate::models::api::SeasonByYearResponse;
+use crate::models::api::{Schedule, SeasonByYearResponse};
+use crate::utils::{schedule_api_url, schedule_file_name};
 
 pub async fn fetch_and_save_schedule(year: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let api_url = format!("https://ergast.com/api/f1/{}/races.json", year);
+    let api_url = schedule_api_url(year);
     let response = reqwest::get(&api_url)
         .await?
         .json::<SeasonByYearResponse>()
@@ -37,7 +39,7 @@ pub async fn fetch_and_save_schedule(year: &str) -> Result<(), Box<dyn std::erro
 
     let schedule_json = json!({ "schedule": schedule });
     let schedule_string = serde_json::to_string_pretty(&schedule_json)?;
-    let schedule_file_path = format!("schedule-{}.json", year);
+    let schedule_file_path = schedule_file_name(year);
 
     if let Ok(local_schedule_content) = fs::read_to_string(schedule_file_path.clone()) {
         if let Ok(local_schedule_json) = serde_json::from_str::<Value>(&local_schedule_content) {
@@ -78,6 +80,40 @@ pub async fn fetch_and_save_schedule(year: &str) -> Result<(), Box<dyn std::erro
 
     let mut file = File::create(schedule_file_path)?;
     file.write_all(schedule_string.as_bytes())?;
+
+    Ok(())
+}
+
+pub async fn fetch_and_display_next_race() -> Result<(), String> {
+    let now = Utc::now().date_naive();
+    let schedule_file_path = schedule_file_name(&now.year().to_string());
+
+    if !Path::new(&schedule_file_path).exists() {
+        fetch_and_save_schedule(&schedule_file_path)
+            .await
+            .map_err(|e| format!("error fetching schedule: {}", e))?;
+    }
+
+    let schedule_data = fs::read_to_string(schedule_file_path)
+        .map_err(|e| format!("error reading schedule file: {}", e))?;
+
+    let schedule: Schedule = from_str(&schedule_data)
+        .map_err(|e| format!("error deserializing schedule data: {}", e))?;
+
+    let next_race = schedule
+        .races
+        .into_iter()
+        .find(|race| {
+            NaiveDate::parse_from_str(&race.race.date, "%Y-%m-%d")
+                .expect("failed to parse date string")
+                > now
+        })
+        .ok_or("no upcoming races found")?;
+
+    println!("next race: {}", next_race.raceName);
+    println!("round: {}", next_race.round);
+    println!("circuit: {}", next_race.circuitName);
+    println!("date: {}", next_race.race.date);
 
     Ok(())
 }
